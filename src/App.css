@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@plugin "daisyui";
+
+/* FONTS */
+@import "@fontsource-variable/bitter";
+
+@theme {
+    --font-bitter: "Bitter Variable", serif;
+}
