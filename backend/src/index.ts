@@ -5,6 +5,7 @@ import { serveStatic } from "hono/bun";
 const app = new Hono();
 
 app.use("/assets/*", serveStatic({ root: "./static" }));
+app.use("/favicon/*", serveStatic({ root: "./static" }));
 
 // Enable CORS for frontend requests
 app.use(
