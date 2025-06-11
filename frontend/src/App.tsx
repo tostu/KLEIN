@@ -8,6 +8,9 @@ function App() {
   const [networkMetrics, setNetworkMetrics] = useState({});
   const [isTestingNetwork, setIsTestingNetwork] = useState(false);
 
+  // Configure your Hono backend URL
+  const HONO_BASE_URL = import.meta.env.VITE_HONO_BASE_URL;
+
   const supportedFormats = [
     { extension: "jpeg", mimeType: "image/jpeg", quality: 0.9 },
     { extension: "png", mimeType: "image/png" },
@@ -15,8 +18,6 @@ function App() {
     { extension: "bmp", mimeType: "image/bmp" },
     { extension: "avif", mimeType: "image/avif" },
   ];
-
-  // Uguu API configuration - simple file upload service
 
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
@@ -87,35 +88,56 @@ function App() {
     });
   };
 
-  const uploadToUguu = async (blob, filename) => {
+  // Updated function to use Hono backend instead of Uguu
+  const uploadToHono = async (blob, filename) => {
     const formData = new FormData();
     formData.append("files[]", blob, filename);
-    const response = await fetch("https://uguu.se/upload", {
-      method: "POST",
-      mode: "cors",
-      body: formData,
-    });
 
-    if (!response.ok) {
-      throw new Error(`Upload failed: ${response.statusText}`);
-    }
+    try {
+      const response = await fetch(`${HONO_BASE_URL}/upload`, {
+        method: "POST",
+        mode: "cors",
+        body: formData,
+      });
 
-    const data = await response.json();
+      if (!response.ok) {
+        throw new Error(
+          `Upload failed: ${response.status} ${response.statusText}`,
+        );
+      }
 
-    // Uguu returns an array of file objects
-    if (data.files && data.files.length > 0) {
-      return { url: data.files[0].url };
-    } else {
-      throw new Error("Upload failed: No file URL returned");
+      const data = await response.json();
+
+      // Hono returns the same format as Uguu for compatibility
+      if (data.files && data.files.length > 0) {
+        return { url: data.files[0].url };
+      } else {
+        throw new Error("Upload failed: No file URL returned");
+      }
+    } catch (error) {
+      console.error("Upload error:", error);
+      throw error;
     }
   };
 
-  const downloadFromUguu = async (url) => {
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`Download failed: ${response.statusText}`);
+  // Updated function to download from Hono backend
+  const downloadFromHono = async (url) => {
+    try {
+      const response = await fetch(url, {
+        mode: "cors",
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          `Download failed: ${response.status} ${response.statusText}`,
+        );
+      }
+
+      return response.blob();
+    } catch (error) {
+      console.error("Download error:", error);
+      throw error;
     }
-    return response.blob();
   };
 
   const measureNetworkPerformance = async (format, imageData) => {
@@ -123,17 +145,17 @@ function App() {
     let uploadTime, downloadTime, totalTime;
 
     try {
-      // Upload phase
+      // Upload phase - now using Hono
       const uploadStart = performance.now();
-      const uguuData = await uploadToUguu(
+      const honoData = await uploadToHono(
         imageData.blob,
         `converted_image.${format}`,
       );
       uploadTime = performance.now() - uploadStart;
 
-      // Download phase
+      // Download phase - now using Hono
       const downloadStart = performance.now();
-      await downloadFromUguu(uguuData.url);
+      await downloadFromHono(honoData.url);
       downloadTime = performance.now() - downloadStart;
 
       totalTime = performance.now() - startTime;
@@ -143,7 +165,7 @@ function App() {
         downloadTime: downloadTime.toFixed(2),
         totalTime: totalTime.toFixed(2),
         imageSize: imageData.size,
-        uguuUrl: uguuData.url,
+        honoUrl: honoData.url,
         success: true,
       };
     } catch (error) {
@@ -226,6 +248,9 @@ function App() {
             <h1 className="text-2xl font-bold text-gray-800 font-bitter">
               KLEIN
             </h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Using Hono Backend at: {HONO_BASE_URL}
+            </p>
           </div>
         </div>
       </header>
@@ -244,7 +269,7 @@ function App() {
               <h2 className="text-xl font-semibold mb-4">Upload Image</h2>
               <p className="text-gray-600 mb-6">
                 Convert your image to multiple formats and test network
-                performance using Uguu
+                performance using Hono backend
               </p>
               <button
                 className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium"
@@ -284,8 +309,6 @@ function App() {
                 </button>
               </div>
             </div>
-
-            {/* Removed the Client ID warning since no authorization is needed */}
 
             {isConverting ? (
               <div className="flex justify-center items-center py-12">
@@ -360,7 +383,7 @@ function App() {
                 {Object.keys(networkMetrics).length > 0 && (
                   <div className="bg-white rounded-lg shadow-lg p-6">
                     <h3 className="text-xl font-semibold mb-4">
-                      Network Performance Results
+                      Network Performance Results (Hono Backend)
                     </h3>
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
@@ -436,7 +459,7 @@ function App() {
       <footer className="bg-gray-200 text-center py-4 text-sm text-gray-600">
         <p>
           Copyright © {new Date().getFullYear()} - Network Performance Testing
-          Tool
+          Tool (Hono Backend)
         </p>
       </footer>
     </div>
