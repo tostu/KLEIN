@@ -31,7 +31,7 @@ RUN bun install
 COPY backend .
 
 # Copy static files from frontend build
-COPY --from=frontend-builder /app/frontend/dist ./public
+COPY --from=frontend-builder /app/frontend/dist ./static
 
 # Expose the port your Hono app uses
 EXPOSE 3000
