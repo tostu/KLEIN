@@ -16,7 +16,7 @@ function App() {
     { extension: "avif", mimeType: "image/avif" },
   ];
 
-  // Imgur API configuration - no client ID needed for anonymous uploads
+  // Uguu API configuration - simple file upload service
 
   const handleFileUpload = async (event) => {
     const file = event.target.files?.[0];
@@ -87,13 +87,12 @@ function App() {
     });
   };
 
-  const uploadToImgur = async (blob, filename) => {
+  const uploadToUguu = async (blob, filename) => {
     const formData = new FormData();
-    formData.append("image", blob);
-    formData.append("title", filename);
-
-    const response = await fetch("https://api.imgur.com/3/image", {
+    formData.append("files[]", blob, filename);
+    const response = await fetch("https://uguu.se/upload", {
       method: "POST",
+      mode: "cors",
       body: formData,
     });
 
@@ -102,10 +101,16 @@ function App() {
     }
 
     const data = await response.json();
-    return data.data;
+
+    // Uguu returns an array of file objects
+    if (data.files && data.files.length > 0) {
+      return { url: data.files[0].url };
+    } else {
+      throw new Error("Upload failed: No file URL returned");
+    }
   };
 
-  const downloadFromImgur = async (url) => {
+  const downloadFromUguu = async (url) => {
     const response = await fetch(url);
     if (!response.ok) {
       throw new Error(`Download failed: ${response.statusText}`);
@@ -120,7 +125,7 @@ function App() {
     try {
       // Upload phase
       const uploadStart = performance.now();
-      const imgurData = await uploadToImgur(
+      const uguuData = await uploadToUguu(
         imageData.blob,
         `converted_image.${format}`,
       );
@@ -128,7 +133,7 @@ function App() {
 
       // Download phase
       const downloadStart = performance.now();
-      await downloadFromImgur(imgurData.link);
+      await downloadFromUguu(uguuData.url);
       downloadTime = performance.now() - downloadStart;
 
       totalTime = performance.now() - startTime;
@@ -138,7 +143,7 @@ function App() {
         downloadTime: downloadTime.toFixed(2),
         totalTime: totalTime.toFixed(2),
         imageSize: imageData.size,
-        imgurUrl: imgurData.link,
+        uguuUrl: uguuData.url,
         success: true,
       };
     } catch (error) {
@@ -161,10 +166,6 @@ function App() {
     setIsTestingNetwork(true);
     const metrics = {};
 
-    // Helper function to add delay between API calls
-    const delay = (ms: number) =>
-      new Promise((resolve) => setTimeout(resolve, ms));
-
     // Test original image first
     if (originalImage?.file) {
       try {
@@ -173,19 +174,13 @@ function App() {
           size: originalImage.size,
         });
         metrics.original = originalMetrics;
-
-        // Add delay after original image test
-        await delay(2000);
       } catch (error) {
         metrics.original = { error: error.message, success: false };
       }
     }
 
-    // Test each converted format with delays between runs
-    const formatEntries = Object.entries(convertedImages);
-    for (let i = 0; i < formatEntries.length; i++) {
-      const [format, imageData] = formatEntries[i];
-
+    // Test each converted format
+    for (const [format, imageData] of Object.entries(convertedImages)) {
       try {
         const formatMetrics = await measureNetworkPerformance(
           format,
@@ -194,11 +189,6 @@ function App() {
         metrics[format] = formatMetrics;
       } catch (error) {
         metrics[format] = { error: error.message, success: false };
-      }
-
-      // Add delay between format tests (but not after the last one)
-      if (i < formatEntries.length - 1) {
-        await delay(2000);
       }
     }
 
@@ -254,7 +244,7 @@ function App() {
               <h2 className="text-xl font-semibold mb-4">Upload Image</h2>
               <p className="text-gray-600 mb-6">
                 Convert your image to multiple formats and test network
-                performance
+                performance using Uguu
               </p>
               <button
                 className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium"
@@ -294,6 +284,8 @@ function App() {
                 </button>
               </div>
             </div>
+
+            {/* Removed the Client ID warning since no authorization is needed */}
 
             {isConverting ? (
               <div className="flex justify-center items-center py-12">
