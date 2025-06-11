@@ -1,17 +1,74 @@
-import React, { useState } from "react";
+import { useState } from "react";
+import type { ChangeEvent } from "react";
 import "./App.css";
 
+interface OriginalImage {
+  url: string;
+  name: string;
+  size: string;
+  file: File;
+}
+
+interface ConvertedImageData {
+  url: string;
+  size: string;
+  mimeType: string;
+  blob: Blob;
+}
+
+interface ConvertedImages {
+  [key: string]: ConvertedImageData;
+}
+
+interface NetworkMetrics {
+  uploadTime?: string;
+  downloadTime?: string;
+  totalTime?: string;
+  imageSize?: string;
+  honoUrl?: string;
+  success: boolean;
+  error?: string;
+}
+
+interface NetworkMetricsMap {
+  [key: string]: NetworkMetrics;
+}
+
+interface IsTestingNetworkMap {
+  [key: string]: boolean;
+}
+
+interface SupportedFormat {
+  extension: string;
+  mimeType: string;
+  quality?: number;
+}
+
+interface UploadResponse {
+  files: Array<{ url: string }>;
+}
+
+interface NetworkMetricsDisplayProps {
+  format: string;
+  metrics?: NetworkMetrics;
+  isTesting?: boolean;
+}
+
 function App() {
-  const [originalImage, setOriginalImage] = useState(null);
-  const [convertedImages, setConvertedImages] = useState({});
-  const [isConverting, setIsConverting] = useState(false);
-  const [networkMetrics, setNetworkMetrics] = useState({});
-  const [isTestingNetwork, setIsTestingNetwork] = useState({});
+  const [originalImage, setOriginalImage] = useState<OriginalImage | null>(
+    null,
+  );
+  const [convertedImages, setConvertedImages] = useState<ConvertedImages>({});
+  const [isConverting, setIsConverting] = useState<boolean>(false);
+  const [networkMetrics, setNetworkMetrics] = useState<NetworkMetricsMap>({});
+  const [isTestingNetwork, setIsTestingNetwork] = useState<IsTestingNetworkMap>(
+    {},
+  );
 
   // Configure your Hono backend URL
-  const HONO_BASE_URL = import.meta.env.VITE_HONO_BASE_URL;
+  const HONO_BASE_URL = import.meta.env.VITE_HONO_BASE_URL as string;
 
-  const supportedFormats = [
+  const supportedFormats: SupportedFormat[] = [
     { extension: "jpeg", mimeType: "image/jpeg", quality: 0.9 },
     { extension: "png", mimeType: "image/png" },
     { extension: "webp", mimeType: "image/webp", quality: 0.9 },
@@ -19,7 +76,7 @@ function App() {
     { extension: "avif", mimeType: "image/avif" },
   ];
 
-  const handleFileUpload = async (event) => {
+  const handleFileUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -49,18 +106,20 @@ function App() {
     }
   };
 
-  const convertToFormats = (file) => {
+  const convertToFormats = (file: File): Promise<ConvertedImages> => {
     return new Promise((resolve) => {
       const img = new Image();
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
 
       img.onload = () => {
+        if (!ctx) return;
+
         canvas.width = img.naturalWidth;
         canvas.height = img.naturalHeight;
         ctx.drawImage(img, 0, 0);
 
-        const conversions = {};
+        const conversions: ConvertedImages = {};
 
         supportedFormats.forEach((format) => {
           try {
@@ -96,7 +155,10 @@ function App() {
     });
   };
 
-  const uploadToHono = async (blob, filename) => {
+  const uploadToHono = async (
+    blob: Blob,
+    filename: string,
+  ): Promise<{ url: string }> => {
     const formData = new FormData();
     formData.append("files[]", blob, filename);
 
@@ -113,7 +175,7 @@ function App() {
         );
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as UploadResponse;
 
       if (data.files && data.files.length > 0) {
         return { url: data.files[0].url };
@@ -126,7 +188,7 @@ function App() {
     }
   };
 
-  const downloadFromHono = async (url) => {
+  const downloadFromHono = async (url: string): Promise<Blob> => {
     try {
       const response = await fetch(url, {
         mode: "cors",
@@ -145,9 +207,12 @@ function App() {
     }
   };
 
-  const measureNetworkPerformance = async (format, imageData) => {
+  const measureNetworkPerformance = async (
+    format: string,
+    imageData: ConvertedImageData | { blob: File; size: string },
+  ): Promise<NetworkMetrics> => {
     const startTime = performance.now();
-    let uploadTime, downloadTime, totalTime;
+    let uploadTime: number, downloadTime: number, totalTime: number;
 
     try {
       // Upload phase
@@ -175,14 +240,19 @@ function App() {
       };
     } catch (error) {
       console.error(`Network test failed for ${format}:`, error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
       return {
-        error: error.message,
+        error: errorMessage,
         success: false,
       };
     }
   };
 
-  const testAllNetworkPerformance = async (originalFile, conversions) => {
+  const testAllNetworkPerformance = async (
+    originalFile: File,
+    conversions: ConvertedImages,
+  ) => {
     // Test original image
     if (originalFile) {
       setIsTestingNetwork((prev) => ({ ...prev, original: true }));
@@ -193,9 +263,11 @@ function App() {
         });
         setNetworkMetrics((prev) => ({ ...prev, original: originalMetrics }));
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
         setNetworkMetrics((prev) => ({
           ...prev,
-          original: { error: error.message, success: false },
+          original: { error: errorMessage, success: false },
         }));
       } finally {
         setIsTestingNetwork((prev) => ({ ...prev, original: false }));
@@ -212,9 +284,11 @@ function App() {
         );
         setNetworkMetrics((prev) => ({ ...prev, [format]: formatMetrics }));
       } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
         setNetworkMetrics((prev) => ({
           ...prev,
-          [format]: { error: error.message, success: false },
+          [format]: { error: errorMessage, success: false },
         }));
       } finally {
         setIsTestingNetwork((prev) => ({ ...prev, [format]: false }));
@@ -222,7 +296,11 @@ function App() {
     }
   };
 
-  const downloadImage = (dataUrl, filename, extension) => {
+  const downloadImage = (
+    dataUrl: string,
+    filename: string,
+    extension: string,
+  ) => {
     const link = document.createElement("a");
     link.download = `${filename.split(".")[0]}.${extension}`;
     link.href = dataUrl;
@@ -236,16 +314,20 @@ function App() {
     setConvertedImages({});
     setNetworkMetrics({});
     setIsTestingNetwork({});
-    const fileInput = document.getElementById("file-input");
+    const fileInput = document.getElementById("file-input") as HTMLInputElement;
     if (fileInput) fileInput.value = "";
   };
 
-  const formatTime = (ms) => {
-    if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(1)}s`;
+  const formatTime = (ms: string | number) => {
+    const msNum = typeof ms === "string" ? parseFloat(ms) : ms;
+    if (msNum < 1000) return `${msNum}ms`;
+    return `${(msNum / 1000).toFixed(1)}s`;
   };
 
-  const NetworkMetricsDisplay = ({ format, metrics, isTesting }) => {
+  const NetworkMetricsDisplay = ({
+    metrics,
+    isTesting,
+  }: NetworkMetricsDisplayProps) => {
     if (isTesting) {
       return (
         <div className="flex items-center mt-2">
@@ -276,19 +358,19 @@ function App() {
         <div className="flex justify-between text-xs">
           <span className="text-gray-600">Upload:</span>
           <span className="font-medium text-blue-600">
-            {formatTime(metrics.uploadTime)}
+            {metrics.uploadTime && formatTime(metrics.uploadTime)}
           </span>
         </div>
         <div className="flex justify-between text-xs">
           <span className="text-gray-600">Download:</span>
           <span className="font-medium text-green-600">
-            {formatTime(metrics.downloadTime)}
+            {metrics.downloadTime && formatTime(metrics.downloadTime)}
           </span>
         </div>
         <div className="flex justify-between text-xs">
           <span className="text-gray-600">Total:</span>
           <span className="font-semibold text-purple-600">
-            {formatTime(metrics.totalTime)}
+            {metrics.totalTime && formatTime(metrics.totalTime)}
           </span>
         </div>
       </div>
@@ -457,17 +539,17 @@ function App() {
                               {metrics.imageSize || "N/A"}
                             </td>
                             <td className="py-2">
-                              {metrics.success
+                              {metrics.success && metrics.uploadTime
                                 ? formatTime(metrics.uploadTime)
                                 : "Failed"}
                             </td>
                             <td className="py-2">
-                              {metrics.success
+                              {metrics.success && metrics.downloadTime
                                 ? formatTime(metrics.downloadTime)
                                 : "Failed"}
                             </td>
                             <td className="py-2">
-                              {metrics.success
+                              {metrics.success && metrics.totalTime
                                 ? formatTime(metrics.totalTime)
                                 : "Failed"}
                             </td>

@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { serveStatic } from "hono/bun";
 
 const app = new Hono();
+
+app.use("/assets/*", serveStatic({ root: "./static" }));
 
 // Enable CORS for frontend requests
 app.use(
@@ -16,10 +19,6 @@ app.use(
 // In-memory storage for uploaded files (replace with proper storage in production)
 const fileStorage = new Map();
 let fileCounter = 0;
-
-app.get("/", (c) => {
-  return c.text("Hello Hono!");
-});
 
 // Upload endpoint
 app.post("/upload", async (c) => {
@@ -108,5 +107,7 @@ app.get("/health", (c) => {
     filesStored: fileStorage.size,
   });
 });
+
+app.get("*", serveStatic({ path: "./static/index.html" }));
 
 export default app;
