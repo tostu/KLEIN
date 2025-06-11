@@ -66,7 +66,7 @@ function App() {
   );
 
   // Configure your Hono backend URL
-  const HONO_BASE_URL = import.meta.env.VITE_HONO_BASE_URL as string;
+  const HONO_BASE_URL = import.meta.env.VITE_HONO_BASE_URL || "/";
 
   const supportedFormats: SupportedFormat[] = [
     { extension: "jpeg", mimeType: "image/jpeg", quality: 0.9 },
