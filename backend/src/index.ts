@@ -16,11 +16,7 @@ app.use(
   }),
 );
 
-// In-memory storage for uploaded files (replace with proper storage in production)
-const fileStorage = new Map();
-let fileCounter = 0;
-
-// Upload endpoint
+// Upload endpoint - now uploads to uguu.se
 app.post("/upload", async (c) => {
   try {
     const formData = await c.req.formData();
@@ -30,73 +26,171 @@ app.post("/upload", async (c) => {
       return c.json({ error: "No file provided" }, 400);
     }
 
-    // Generate unique filename
-    const fileId = `file_${++fileCounter}_${Date.now()}`;
-    const extension = file.name.split(".").pop() || "bin";
-    const filename = `${fileId}.${extension}`;
+    // Check if file is an image
+    if (!file.type.startsWith("image/")) {
+      return c.json({ error: "Only image files are allowed" }, 400);
+    }
 
-    // Convert file to buffer for storage
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = new Uint8Array(arrayBuffer);
+    // Create FormData for uguu.se
+    const uguuFormData = new FormData();
+    uguuFormData.append("files[]", file);
 
-    // Store file data
-    fileStorage.set(fileId, {
-      filename: filename,
-      originalName: file.name,
-      mimeType: file.type,
-      size: file.size,
-      buffer: buffer,
-      uploadTime: new Date().toISOString(),
+    // Upload to uguu.se
+    const response = await fetch("https://uguu.se/upload", {
+      method: "POST",
+      body: uguuFormData,
     });
 
-    // Return response in format similar to Uguu
+    if (!response.ok) {
+      throw new Error(`Uguu.se responded with status: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    // Check if upload was successful
+    if (!result.success || !result.files || result.files.length === 0) {
+      throw new Error("Upload to uguu.se failed");
+    }
+
+    // Return the response with proxied URLs
     return c.json({
-      files: [
-        {
-          url: `${new URL(c.req.url).origin}/file/${fileId}`,
-          filename: filename,
-          size: file.size,
-        },
-      ],
+      success: true,
+      files: result.files.map((file) => ({
+        url: `/proxy-image?url=${file.url}`, // Return proxied URL
+        originalUrl: file.url, // Keep original URL for reference
+        filename: file.name,
+        size: file.size || 0,
+      })),
     });
   } catch (error) {
     console.error("Upload error:", error);
-    return c.json({ error: "Upload failed" }, 500);
+    return c.json(
+      {
+        success: false,
+        error: "Upload failed",
+        details: error.message,
+      },
+      500,
+    );
   }
 });
 
-// Download endpoint
-app.get("/file/:fileId", async (c) => {
-  const fileId = c.req.param("fileId");
-  const fileData = fileStorage.get(fileId);
+// Image proxy endpoint to avoid CORS issues
+app.get("/proxy-image/:encodedUrl", async (c) => {
+  try {
+    const encodedUrl = c.req.param("encodedUrl");
+    const imageUrl = decodeURIComponent(encodedUrl);
 
-  if (!fileData) {
-    return c.json({ error: "File not found" }, 404);
+    // Validate that it's a uguu.se URL for security
+    if (!imageUrl.startsWith("https://uguu.se/")) {
+      return c.json({ error: "Invalid image URL" }, 400);
+    }
+
+    // Fetch the image from uguu.se
+    const response = await fetch(imageUrl);
+
+    if (!response.ok) {
+      console.error(
+        `Failed to fetch image: ${response.status} ${response.statusText}`,
+      );
+      return c.json({ error: "Image not found" }, 404);
+    }
+
+    // Get the content type
+    const contentType = response.headers.get("content-type");
+
+    // Validate that it's actually an image
+    if (!contentType || !contentType.startsWith("image/")) {
+      return c.json({ error: "Invalid content type" }, 400);
+    }
+
+    // Get the image data
+    const imageBuffer = await response.arrayBuffer();
+
+    // Set appropriate headers
+    c.header("Content-Type", contentType);
+    c.header("Cache-Control", "public, max-age=86400"); // Cache for 24 hours
+    c.header("Content-Length", imageBuffer.byteLength.toString());
+
+    // Return the image
+    return c.body(imageBuffer);
+  } catch (error) {
+    console.error("Image proxy error:", error);
+    return c.json({ error: "Failed to proxy image" }, 500);
   }
-
-  // Set appropriate headers
-  c.header("Content-Type", fileData.mimeType);
-  c.header("Content-Length", fileData.size.toString());
-  c.header(
-    "Content-Disposition",
-    `inline; filename="${fileData.originalName}"`,
-  );
-
-  return c.body(fileData.buffer);
 });
 
-// List uploaded files (optional endpoint for debugging)
-app.get("/files", (c) => {
-  const files = Array.from(fileStorage.entries()).map(([id, data]) => ({
-    id,
-    filename: data.filename,
-    originalName: data.originalName,
-    size: data.size,
-    uploadTime: data.uploadTime,
-    url: `${new URL(c.req.url).origin}/file/${id}`,
-  }));
+// Alternative proxy endpoint with direct URL parameter
+app.get("/proxy-image", async (c) => {
+  try {
+    const imageUrl = c.req.query("url");
 
-  return c.json({ files });
+    if (!imageUrl) {
+      return c.json({ error: "URL parameter is required" }, 400);
+    }
+
+    // Validate that it's a uguu.se URL for security
+    if (!imageUrl.includes("uguu.se")) {
+      return c.json({ error: "Invalid image URL" }, 400);
+    }
+
+    // Fetch the image from uguu.se
+    const response = await fetch(imageUrl);
+
+    if (!response.ok) {
+      console.error(
+        `Failed to fetch image: ${response.status} ${response.statusText}`,
+      );
+      return c.json({ error: "Image not found" }, 404);
+    }
+
+    // Get the content type
+    const contentType = response.headers.get("content-type");
+
+    // Validate that it's actually an image
+    if (!contentType || !contentType.startsWith("image/")) {
+      return c.json({ error: "Invalid content type" }, 400);
+    }
+
+    // Get the image data
+    const imageBuffer = await response.arrayBuffer();
+
+    // Set appropriate headers
+    c.header("Content-Type", contentType);
+    c.header("Cache-Control", "public, max-age=86400"); // Cache for 24 hours
+    c.header("Content-Length", imageBuffer.byteLength.toString());
+
+    // Return the image
+    return c.body(imageBuffer);
+  } catch (error) {
+    console.error("Image proxy error:", error);
+    return c.json({ error: "Failed to proxy image" }, 500);
+  }
+});
+
+// Proxy endpoint to get file info (optional)
+app.get("/file-info/:url", async (c) => {
+  try {
+    const encodedUrl = c.req.param("url");
+    const fileUrl = decodeURIComponent(encodedUrl);
+
+    // Make a HEAD request to get file info
+    const response = await fetch(fileUrl, { method: "HEAD" });
+
+    if (!response.ok) {
+      return c.json({ error: "File not found" }, 404);
+    }
+
+    return c.json({
+      url: fileUrl,
+      contentType: response.headers.get("content-type"),
+      contentLength: response.headers.get("content-length"),
+      lastModified: response.headers.get("last-modified"),
+    });
+  } catch (error) {
+    console.error("File info error:", error);
+    return c.json({ error: "Failed to get file info" }, 500);
+  }
 });
 
 // Health check endpoint
@@ -104,8 +198,26 @@ app.get("/health", (c) => {
   return c.json({
     status: "ok",
     timestamp: new Date().toISOString(),
-    filesStored: fileStorage.size,
+    service: "uguu.se proxy",
   });
+});
+
+// Test endpoint to verify uguu.se connectivity
+app.get("/test-uguu", async (c) => {
+  try {
+    const response = await fetch("https://uguu.se", { method: "HEAD" });
+    return c.json({
+      uguuStatus: response.ok ? "reachable" : "unreachable",
+      statusCode: response.status,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    return c.json({
+      uguuStatus: "unreachable",
+      error: error.message,
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 app.get("*", serveStatic({ path: "./static/index.html" }));
