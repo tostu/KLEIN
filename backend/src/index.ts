@@ -10,7 +10,11 @@ app.use("/assets/*", serveStatic({ root: "./static" }));
 app.use(
   "/*",
   cors({
-    origin: ["http://localhost:3000", "http://localhost:5173"], // Add your frontend URLs
+    origin: [
+      "http://localhost:3000",
+      "http://localhost:5173",
+      "https://klein.app.tostu.me",
+    ], // Add your frontend URLs
     allowMethods: ["GET", "POST", "PUT", "DELETE"],
     allowHeaders: ["Content-Type"],
   }),
