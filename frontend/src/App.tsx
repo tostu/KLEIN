@@ -6,7 +6,7 @@ function App() {
   const [convertedImages, setConvertedImages] = useState({});
   const [isConverting, setIsConverting] = useState(false);
   const [networkMetrics, setNetworkMetrics] = useState({});
-  const [isTestingNetwork, setIsTestingNetwork] = useState(false);
+  const [isTestingNetwork, setIsTestingNetwork] = useState({});
 
   // Configure your Hono backend URL
   const HONO_BASE_URL = import.meta.env.VITE_HONO_BASE_URL;
@@ -24,6 +24,9 @@ function App() {
     if (!file) return;
 
     setIsConverting(true);
+    setNetworkMetrics({});
+    setIsTestingNetwork({});
+
     setOriginalImage({
       url: URL.createObjectURL(file),
       name: file.name,
@@ -34,6 +37,11 @@ function App() {
     try {
       const conversions = await convertToFormats(file);
       setConvertedImages(conversions);
+
+      // Start network performance testing immediately after conversion
+      setTimeout(() => {
+        testAllNetworkPerformance(file, conversions);
+      }, 100);
     } catch (error) {
       console.error("Conversion failed:", error);
     } finally {
@@ -88,7 +96,6 @@ function App() {
     });
   };
 
-  // Updated function to use Hono backend instead of Uguu
   const uploadToHono = async (blob, filename) => {
     const formData = new FormData();
     formData.append("files[]", blob, filename);
@@ -108,7 +115,6 @@ function App() {
 
       const data = await response.json();
 
-      // Hono returns the same format as Uguu for compatibility
       if (data.files && data.files.length > 0) {
         return { url: data.files[0].url };
       } else {
@@ -120,7 +126,6 @@ function App() {
     }
   };
 
-  // Updated function to download from Hono backend
   const downloadFromHono = async (url) => {
     try {
       const response = await fetch(url, {
@@ -145,7 +150,7 @@ function App() {
     let uploadTime, downloadTime, totalTime;
 
     try {
-      // Upload phase - now using Hono
+      // Upload phase
       const uploadStart = performance.now();
       const honoData = await uploadToHono(
         imageData.blob,
@@ -153,7 +158,7 @@ function App() {
       );
       uploadTime = performance.now() - uploadStart;
 
-      // Download phase - now using Hono
+      // Download phase
       const downloadStart = performance.now();
       await downloadFromHono(honoData.url);
       downloadTime = performance.now() - downloadStart;
@@ -161,9 +166,9 @@ function App() {
       totalTime = performance.now() - startTime;
 
       return {
-        uploadTime: uploadTime.toFixed(2),
-        downloadTime: downloadTime.toFixed(2),
-        totalTime: totalTime.toFixed(2),
+        uploadTime: uploadTime.toFixed(0),
+        downloadTime: downloadTime.toFixed(0),
+        totalTime: totalTime.toFixed(0),
         imageSize: imageData.size,
         honoUrl: honoData.url,
         success: true,
@@ -177,45 +182,44 @@ function App() {
     }
   };
 
-  const testNetworkPerformance = async () => {
-    if (!convertedImages || Object.keys(convertedImages).length === 0) {
-      alert(
-        "Please convert an image first before testing network performance.",
-      );
-      return;
-    }
-
-    setIsTestingNetwork(true);
-    const metrics = {};
-
-    // Test original image first
-    if (originalImage?.file) {
+  const testAllNetworkPerformance = async (originalFile, conversions) => {
+    // Test original image
+    if (originalFile) {
+      setIsTestingNetwork((prev) => ({ ...prev, original: true }));
       try {
         const originalMetrics = await measureNetworkPerformance("original", {
-          blob: originalImage.file,
-          size: originalImage.size,
+          blob: originalFile,
+          size: (originalFile.size / 1024).toFixed(1) + " KB",
         });
-        metrics.original = originalMetrics;
+        setNetworkMetrics((prev) => ({ ...prev, original: originalMetrics }));
       } catch (error) {
-        metrics.original = { error: error.message, success: false };
+        setNetworkMetrics((prev) => ({
+          ...prev,
+          original: { error: error.message, success: false },
+        }));
+      } finally {
+        setIsTestingNetwork((prev) => ({ ...prev, original: false }));
       }
     }
 
     // Test each converted format
-    for (const [format, imageData] of Object.entries(convertedImages)) {
+    for (const [format, imageData] of Object.entries(conversions)) {
+      setIsTestingNetwork((prev) => ({ ...prev, [format]: true }));
       try {
         const formatMetrics = await measureNetworkPerformance(
           format,
           imageData,
         );
-        metrics[format] = formatMetrics;
+        setNetworkMetrics((prev) => ({ ...prev, [format]: formatMetrics }));
       } catch (error) {
-        metrics[format] = { error: error.message, success: false };
+        setNetworkMetrics((prev) => ({
+          ...prev,
+          [format]: { error: error.message, success: false },
+        }));
+      } finally {
+        setIsTestingNetwork((prev) => ({ ...prev, [format]: false }));
       }
     }
-
-    setNetworkMetrics(metrics);
-    setIsTestingNetwork(false);
   };
 
   const downloadImage = (dataUrl, filename, extension) => {
@@ -231,13 +235,64 @@ function App() {
     setOriginalImage(null);
     setConvertedImages({});
     setNetworkMetrics({});
+    setIsTestingNetwork({});
     const fileInput = document.getElementById("file-input");
     if (fileInput) fileInput.value = "";
   };
 
   const formatTime = (ms) => {
     if (ms < 1000) return `${ms}ms`;
-    return `${(ms / 1000).toFixed(2)}s`;
+    return `${(ms / 1000).toFixed(1)}s`;
+  };
+
+  const NetworkMetricsDisplay = ({ format, metrics, isTesting }) => {
+    if (isTesting) {
+      return (
+        <div className="flex items-center mt-2">
+          <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-500 mr-2"></div>
+          <span className="text-xs text-gray-500">Testing network...</span>
+        </div>
+      );
+    }
+
+    if (!metrics) {
+      return (
+        <div className="mt-2">
+          <span className="text-xs text-gray-400">Network: Pending</span>
+        </div>
+      );
+    }
+
+    if (!metrics.success) {
+      return (
+        <div className="mt-2">
+          <span className="text-xs text-red-500">Network: Failed</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-2 space-y-1">
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-600">Upload:</span>
+          <span className="font-medium text-blue-600">
+            {formatTime(metrics.uploadTime)}
+          </span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-600">Download:</span>
+          <span className="font-medium text-green-600">
+            {formatTime(metrics.downloadTime)}
+          </span>
+        </div>
+        <div className="flex justify-between text-xs">
+          <span className="text-gray-600">Total:</span>
+          <span className="font-semibold text-purple-600">
+            {formatTime(metrics.totalTime)}
+          </span>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -249,7 +304,7 @@ function App() {
               KLEIN
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              Using Hono Backend at: {HONO_BASE_URL}
+              Real-time Image Conversion & Network Performance Testing
             </p>
           </div>
         </div>
@@ -268,8 +323,8 @@ function App() {
               />
               <h2 className="text-xl font-semibold mb-4">Upload Image</h2>
               <p className="text-gray-600 mb-6">
-                Convert your image to multiple formats and test network
-                performance using Hono backend
+                Convert your image to multiple formats with automatic network
+                performance testing
               </p>
               <button
                 className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium"
@@ -283,31 +338,14 @@ function App() {
           <div className="max-w-7xl mx-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-2xl font-bold">
-                Image Conversion & Network Testing
+                Image Conversion & Network Performance
               </h2>
-              <div className="space-x-3">
-                {Object.keys(convertedImages).length > 0 && (
-                  <button
-                    className={`px-4 py-2 rounded-lg font-medium ${
-                      isTestingNetwork
-                        ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-green-500 hover:bg-green-600"
-                    } text-white`}
-                    onClick={testNetworkPerformance}
-                    disabled={isTestingNetwork}
-                  >
-                    {isTestingNetwork
-                      ? "Testing..."
-                      : "Test Network Performance"}
-                  </button>
-                )}
-                <button
-                  className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
-                  onClick={resetUpload}
-                >
-                  Upload New Image
-                </button>
-              </div>
+              <button
+                className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
+                onClick={resetUpload}
+              >
+                Upload New Image
+              </button>
             </div>
 
             {isConverting ? (
@@ -316,58 +354,67 @@ function App() {
                 <span className="ml-4 text-lg">Converting image...</span>
               </div>
             ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                  {/* Original Image */}
-                  <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+                {/* Original Image */}
+                <div className="bg-white rounded-lg shadow-lg overflow-hidden">
+                  <div className="p-4">
+                    <img
+                      src={originalImage.url}
+                      alt="Original"
+                      className="w-full h-48 object-contain rounded-lg"
+                    />
+                  </div>
+                  <div className="p-4 border-t">
+                    <h3 className="font-semibold text-sm flex items-center">
+                      <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                        ORIGINAL
+                      </span>
+                    </h3>
+                    <p className="text-xs text-gray-600 mt-1">
+                      {originalImage.name}
+                    </p>
+                    <p className="text-xs text-gray-600">
+                      Size: {originalImage.size}
+                    </p>
+                    <NetworkMetricsDisplay
+                      format="original"
+                      metrics={networkMetrics.original}
+                      isTesting={isTestingNetwork.original}
+                    />
+                  </div>
+                </div>
+
+                {/* Converted Images */}
+                {Object.entries(convertedImages).map(([format, data]) => (
+                  <div
+                    key={format}
+                    className="bg-white rounded-lg shadow-lg overflow-hidden"
+                  >
                     <div className="p-4">
                       <img
-                        src={originalImage.url}
-                        alt="Original"
+                        src={data.url}
+                        alt={`${format.toUpperCase()} version`}
                         className="w-full h-48 object-contain rounded-lg"
                       />
                     </div>
                     <div className="p-4 border-t">
-                      <h3 className="font-semibold text-sm flex items-center">
-                        Original
-                        <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                          ORIGINAL
+                      <h3 className="font-semibold text-sm flex items-center text-neutral">
+                        <span className="mr-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                          CONVERTED
                         </span>
+                        {format.toUpperCase()}
                       </h3>
                       <p className="text-xs text-gray-600 mt-1">
-                        {originalImage.name}
+                        Size: {data.size}
                       </p>
-                      <p className="text-xs text-gray-600">
-                        Size: {originalImage.size}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Converted Images */}
-                  {Object.entries(convertedImages).map(([format, data]) => (
-                    <div
-                      key={format}
-                      className="bg-white rounded-lg shadow-lg overflow-hidden"
-                    >
-                      <div className="p-4">
-                        <img
-                          src={data.url}
-                          alt={`${format.toUpperCase()} version`}
-                          className="w-full h-48 object-contain rounded-lg"
-                        />
-                      </div>
-                      <div className="p-4 border-t">
-                        <h3 className="font-semibold text-sm flex items-center">
-                          {format.toUpperCase()}
-                          <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
-                            CONVERTED
-                          </span>
-                        </h3>
-                        <p className="text-xs text-gray-600 mt-1">
-                          Size: {data.size}
-                        </p>
+                      <NetworkMetricsDisplay
+                        format={format}
+                        metrics={networkMetrics[format]}
+                        isTesting={isTestingNetwork[format]}
+                      />
+                      <div className="mt-3">
                         <button
-                          className="mt-3 bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
+                          className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm"
                           onClick={() =>
                             downloadImage(data.url, originalImage.name, format)
                           }
@@ -376,81 +423,72 @@ function App() {
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-
-                {/* Network Performance Results */}
-                {Object.keys(networkMetrics).length > 0 && (
-                  <div className="bg-white rounded-lg shadow-lg p-6">
-                    <h3 className="text-xl font-semibold mb-4">
-                      Network Performance Results (Hono Backend)
-                    </h3>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="text-left py-2">Format</th>
-                            <th className="text-left py-2">File Size</th>
-                            <th className="text-left py-2">Upload Time</th>
-                            <th className="text-left py-2">Download Time</th>
-                            <th className="text-left py-2">Total Time</th>
-                            <th className="text-left py-2">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.entries(networkMetrics).map(
-                            ([format, metrics]) => (
-                              <tr key={format} className="border-b">
-                                <td className="py-2 font-medium">
-                                  {format.toUpperCase()}
-                                </td>
-                                <td className="py-2">
-                                  {metrics.imageSize || "N/A"}
-                                </td>
-                                <td className="py-2">
-                                  {metrics.success
-                                    ? formatTime(metrics.uploadTime)
-                                    : "Failed"}
-                                </td>
-                                <td className="py-2">
-                                  {metrics.success
-                                    ? formatTime(metrics.downloadTime)
-                                    : "Failed"}
-                                </td>
-                                <td className="py-2">
-                                  {metrics.success
-                                    ? formatTime(metrics.totalTime)
-                                    : "Failed"}
-                                </td>
-                                <td className="py-2">
-                                  {metrics.success ? (
-                                    <span className="text-green-600 font-medium">
-                                      Success
-                                    </span>
-                                  ) : (
-                                    <span className="text-red-600 font-medium">
-                                      Error
-                                    </span>
-                                  )}
-                                </td>
-                              </tr>
-                            ),
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {isTestingNetwork && (
-                      <div className="mt-4 flex items-center">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-500"></div>
-                        <span className="ml-2 text-sm text-gray-600">
-                          Testing network performance...
-                        </span>
-                      </div>
-                    )}
                   </div>
-                )}
-              </>
+                ))}
+              </div>
+            )}
+
+            {/* Summary Table */}
+            {Object.keys(networkMetrics).length > 0 && (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <h3 className="text-xl font-semibold mb-4">
+                  Network Performance Summary
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-neutral">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-2">Format</th>
+                        <th className="text-left py-2">File Size</th>
+                        <th className="text-left py-2">Upload Time</th>
+                        <th className="text-left py-2">Download Time</th>
+                        <th className="text-left py-2">Total Time</th>
+                        <th className="text-left py-2">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(networkMetrics).map(
+                        ([format, metrics]) => (
+                          <tr key={format} className="border-b">
+                            <td className="py-2 font-medium">
+                              {format.toUpperCase()}
+                            </td>
+                            <td className="py-2">
+                              {metrics.imageSize || "N/A"}
+                            </td>
+                            <td className="py-2">
+                              {metrics.success
+                                ? formatTime(metrics.uploadTime)
+                                : "Failed"}
+                            </td>
+                            <td className="py-2">
+                              {metrics.success
+                                ? formatTime(metrics.downloadTime)
+                                : "Failed"}
+                            </td>
+                            <td className="py-2">
+                              {metrics.success
+                                ? formatTime(metrics.totalTime)
+                                : "Failed"}
+                            </td>
+                            <td className="py-2">
+                              {metrics.success ? (
+                                <span className="text-green-600 font-medium">
+                                  Success
+                                </span>
+                              ) : (
+                                <span className="text-red-600 font-medium">
+                                  Error
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ),
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -458,8 +496,8 @@ function App() {
 
       <footer className="bg-gray-200 text-center py-4 text-sm text-gray-600">
         <p>
-          Copyright © {new Date().getFullYear()} - Network Performance Testing
-          Tool (Hono Backend)
+          Copyright © {new Date().getFullYear()} - Real-time Network
+          Performance Testing
         </p>
       </footer>
     </div>
