@@ -65,11 +65,10 @@ function App() {
     {},
   );
 
-  // Configure your Hono backend URL
-  // const HONO_BASE_URL =
-  //   import.meta.env.MODE === "development"
-  //     ? import.meta.env.VITE_HONO_BASE_URL
-  //     : null;
+  const HONO_BASE_URL =
+    import.meta.env.MODE === "development"
+      ? import.meta.env.VITE_HONO_BASE_URL
+      : "";
 
   const supportedFormats: SupportedFormat[] = [
     { extension: "jpeg", mimeType: "image/jpeg", quality: 0.9 },
@@ -166,7 +165,7 @@ function App() {
     formData.append("files[]", blob, filename);
 
     try {
-      const response = await fetch(`/upload`, {
+      const response = await fetch(`${HONO_BASE_URL}/upload`, {
         method: "POST",
         mode: "cors",
         body: formData,

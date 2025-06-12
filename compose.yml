@@ -2,7 +2,5 @@ services:
   backend:
     build:
       context: ./
-      args:
-        VITE_HONO_BASE_URL: http://host.docker.internal:3000
     ports:
       - "3000:3000"
