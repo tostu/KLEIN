@@ -2,6 +2,14 @@ import { useState } from "react";
 import type { ChangeEvent } from "react";
 import "./App.css";
 
+import { NetworkMetricsDisplay } from "./components/NetworkMetricsDisplay";
+import { SummaryTable } from "./components/SummaryTable";
+
+import type {
+  NetworkMetrics,
+  NetworkMetricsMap,
+} from "./components/NetworkMetricsDisplay";
+
 interface OriginalImage {
   url: string;
   name: string;
@@ -20,20 +28,6 @@ interface ConvertedImages {
   [key: string]: ConvertedImageData;
 }
 
-interface NetworkMetrics {
-  uploadTime?: string;
-  downloadTime?: string;
-  totalTime?: string;
-  imageSize?: string;
-  honoUrl?: string;
-  success: boolean;
-  error?: string;
-}
-
-interface NetworkMetricsMap {
-  [key: string]: NetworkMetrics;
-}
-
 interface IsTestingNetworkMap {
   [key: string]: boolean;
 }
@@ -46,12 +40,6 @@ interface SupportedFormat {
 
 interface UploadResponse {
   files: Array<{ url: string }>;
-}
-
-interface NetworkMetricsDisplayProps {
-  format: string;
-  metrics?: NetworkMetrics;
-  isTesting?: boolean;
 }
 
 function App() {
@@ -238,7 +226,7 @@ function App() {
         totalTime: totalTime.toFixed(0),
         imageSize: imageData.size,
         honoUrl: honoData.url,
-        success: true,
+        success: true, // ✅ Always include success property
       };
     } catch (error) {
       console.error(`Network test failed for ${format}:`, error);
@@ -246,7 +234,7 @@ function App() {
         error instanceof Error ? error.message : "Unknown error";
       return {
         error: errorMessage,
-        success: false,
+        success: false, // ✅ Always include success property
       };
     }
   };
@@ -269,7 +257,10 @@ function App() {
           error instanceof Error ? error.message : "Unknown error";
         setNetworkMetrics((prev) => ({
           ...prev,
-          original: { error: errorMessage, success: false },
+          original: {
+            error: errorMessage,
+            success: false, // ✅ Always include success property
+          },
         }));
       } finally {
         setIsTestingNetwork((prev) => ({ ...prev, original: false }));
@@ -290,7 +281,10 @@ function App() {
           error instanceof Error ? error.message : "Unknown error";
         setNetworkMetrics((prev) => ({
           ...prev,
-          [format]: { error: errorMessage, success: false },
+          [format]: {
+            error: errorMessage,
+            success: false, // ✅ Always include success property
+          },
         }));
       } finally {
         setIsTestingNetwork((prev) => ({ ...prev, [format]: false }));
@@ -318,65 +312,6 @@ function App() {
     setIsTestingNetwork({});
     const fileInput = document.getElementById("file-input") as HTMLInputElement;
     if (fileInput) fileInput.value = "";
-  };
-
-  const formatTime = (ms: string | number) => {
-    const msNum = typeof ms === "string" ? parseFloat(ms) : ms;
-    if (msNum < 1000) return `${msNum}ms`;
-    return `${(msNum / 1000).toFixed(1)}s`;
-  };
-
-  const NetworkMetricsDisplay = ({
-    metrics,
-    isTesting,
-  }: NetworkMetricsDisplayProps) => {
-    if (isTesting) {
-      return (
-        <div className="flex items-center mt-2">
-          <div className="animate-spin rounded-full h-3 w-3 border-b border-blue-500 mr-2"></div>
-          <span className="text-xs text-gray-500">Testing network...</span>
-        </div>
-      );
-    }
-
-    if (!metrics) {
-      return (
-        <div className="mt-2">
-          <span className="text-xs text-gray-400">Network: Pending</span>
-        </div>
-      );
-    }
-
-    if (!metrics.success) {
-      return (
-        <div className="mt-2">
-          <span className="text-xs text-red-500">Network: Failed</span>
-        </div>
-      );
-    }
-
-    return (
-      <div className="mt-2 space-y-1">
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-600">Upload:</span>
-          <span className="font-medium text-blue-600">
-            {metrics.uploadTime && formatTime(metrics.uploadTime)}
-          </span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-600">Download:</span>
-          <span className="font-medium text-green-600">
-            {metrics.downloadTime && formatTime(metrics.downloadTime)}
-          </span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-600">Total:</span>
-          <span className="font-semibold text-purple-600">
-            {metrics.totalTime && formatTime(metrics.totalTime)}
-          </span>
-        </div>
-      </div>
-    );
   };
 
   return (
@@ -513,67 +448,7 @@ function App() {
             )}
 
             {/* Summary Table */}
-            {Object.keys(networkMetrics).length > 0 && (
-              <div className="bg-white rounded-lg shadow-lg p-6">
-                <h3 className="text-xl font-semibold mb-4">
-                  Network Performance Summary
-                </h3>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm text-neutral">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-2">Format</th>
-                        <th className="text-left py-2">File Size</th>
-                        <th className="text-left py-2">Upload Time</th>
-                        <th className="text-left py-2">Download Time</th>
-                        <th className="text-left py-2">Total Time</th>
-                        <th className="text-left py-2">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(networkMetrics).map(
-                        ([format, metrics]) => (
-                          <tr key={format} className="border-b">
-                            <td className="py-2 font-medium">
-                              {format.toUpperCase()}
-                            </td>
-                            <td className="py-2">
-                              {metrics.imageSize || "N/A"}
-                            </td>
-                            <td className="py-2">
-                              {metrics.success && metrics.uploadTime
-                                ? formatTime(metrics.uploadTime)
-                                : "Failed"}
-                            </td>
-                            <td className="py-2">
-                              {metrics.success && metrics.downloadTime
-                                ? formatTime(metrics.downloadTime)
-                                : "Failed"}
-                            </td>
-                            <td className="py-2">
-                              {metrics.success && metrics.totalTime
-                                ? formatTime(metrics.totalTime)
-                                : "Failed"}
-                            </td>
-                            <td className="py-2">
-                              {metrics.success ? (
-                                <span className="text-green-600 font-medium">
-                                  Success
-                                </span>
-                              ) : (
-                                <span className="text-red-600 font-medium">
-                                  Error
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ),
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+            <SummaryTable networkMetrics={networkMetrics} />
           </div>
         )}
       </main>
