@@ -85,7 +85,6 @@ function App() {
       const conversions = await convertToFormats(file);
       setConvertedImages(conversions);
 
-      // Start network performance testing immediately after conversion
       setTimeout(() => {
         testAllNetworkPerformance(file, conversions);
       }, 100);
@@ -117,7 +116,6 @@ function App() {
             const base64Length = dataUrl.split(",")[1].length;
             const sizeInBytes = base64Length * 0.75;
 
-            // Convert data URL to blob for upload
             const base64Data = dataUrl.split(",")[1];
             const byteCharacters = atob(base64Data);
             const byteNumbers = new Array(byteCharacters.length);
@@ -205,7 +203,6 @@ function App() {
     let uploadTime: number, downloadTime: number, totalTime: number;
 
     try {
-      // Upload phase
       const uploadStart = performance.now();
       const honoData = await uploadToHono(
         imageData.blob,
@@ -213,7 +210,6 @@ function App() {
       );
       uploadTime = performance.now() - uploadStart;
 
-      // Download phase
       const downloadStart = performance.now();
       await downloadFromHono(honoData.url);
       downloadTime = performance.now() - downloadStart;
@@ -226,7 +222,7 @@ function App() {
         totalTime: totalTime.toFixed(0),
         imageSize: imageData.size,
         honoUrl: honoData.url,
-        success: true, // ✅ Always include success property
+        success: true,
       };
     } catch (error) {
       console.error(`Network test failed for ${format}:`, error);
@@ -234,7 +230,7 @@ function App() {
         error instanceof Error ? error.message : "Unknown error";
       return {
         error: errorMessage,
-        success: false, // ✅ Always include success property
+        success: false,
       };
     }
   };
@@ -243,7 +239,6 @@ function App() {
     originalFile: File,
     conversions: ConvertedImages,
   ) => {
-    // Test original image
     if (originalFile) {
       setIsTestingNetwork((prev) => ({ ...prev, original: true }));
       try {
@@ -259,7 +254,7 @@ function App() {
           ...prev,
           original: {
             error: errorMessage,
-            success: false, // ✅ Always include success property
+            success: false,
           },
         }));
       } finally {
@@ -267,7 +262,6 @@ function App() {
       }
     }
 
-    // Test each converted format
     for (const [format, imageData] of Object.entries(conversions)) {
       setIsTestingNetwork((prev) => ({ ...prev, [format]: true }));
       try {
@@ -283,7 +277,7 @@ function App() {
           ...prev,
           [format]: {
             error: errorMessage,
-            success: false, // ✅ Always include success property
+            success: false,
           },
         }));
       } finally {
@@ -356,7 +350,7 @@ function App() {
         ) : (
           <div className="max-w-7xl mx-auto">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">
+              <h2 className="text-2xl text-gray-600 font-bold">
                 Image Conversion & Network Performance
               </h2>
               <button
@@ -374,7 +368,6 @@ function App() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                {/* Original Image */}
                 <div className="bg-white rounded-lg shadow-lg overflow-hidden">
                   <div className="p-4">
                     <img
@@ -403,7 +396,6 @@ function App() {
                   </div>
                 </div>
 
-                {/* Converted Images */}
                 {Object.entries(convertedImages).map(([format, data]) => (
                   <div
                     key={format}
@@ -447,7 +439,6 @@ function App() {
               </div>
             )}
 
-            {/* Summary Table */}
             <SummaryTable networkMetrics={networkMetrics} />
           </div>
         )}
