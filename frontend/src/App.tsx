@@ -439,7 +439,19 @@ function App() {
               </div>
             )}
 
-            <SummaryTable networkMetrics={networkMetrics} />
+            <SummaryTable
+              networkMetrics={Object.entries(networkMetrics).reduce(
+                (acc, [key, value]) => {
+                  acc[key] = {
+                    ...value,
+                    success:
+                      value.success !== undefined ? value.success : false,
+                  };
+                  return acc;
+                },
+                {} as NetworkMetricsMap,
+              )}
+            />
           </div>
         )}
       </main>

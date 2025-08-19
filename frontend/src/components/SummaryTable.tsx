@@ -1,7 +1,11 @@
 import { formatTime } from "../helper/FormatTime";
 import type { NetworkMetricsMap } from "./NetworkMetricsDisplay";
 
-export const SummaryTable = (networkMetrics: NetworkMetricsMap) => {
+interface SummaryTableProps {
+  networkMetrics: NetworkMetricsMap;
+}
+
+export const SummaryTable = ({ networkMetrics }: SummaryTableProps) => {
   return (
     <>
       {Object.keys(networkMetrics).length > 0 && (
