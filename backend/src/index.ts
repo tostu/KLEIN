@@ -74,6 +74,7 @@ app.get("/test-uguu", async (c) => {
   }
 });
 
-app.route("*", routes);
+app.route("/", routes);
+app.get("*", serveStatic({ path: "./static/index.html" }));
 
 export default app;
